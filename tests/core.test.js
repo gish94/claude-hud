@@ -1041,3 +1041,282 @@ test('Issue #3: MCP count updates correctly when servers are disabled', async ()
     await rm(homeDir, { recursive: true, force: true });
   }
 });
+
+// === Config cache tests ===
+
+async function getConfigCacheDir(configDir) {
+  return path.join(configDir, 'plugins', 'claude-hud', 'config-cache');
+}
+
+test('countConfigs cache: second call uses cache (mtime unchanged)', async () => {
+  const homeDir = await mkdtemp(path.join(tmpdir(), 'claude-hud-cc-'));
+  const originalHome = process.env.HOME;
+  process.env.HOME = homeDir;
+
+  try {
+    await mkdir(path.join(homeDir, '.claude'), { recursive: true });
+    await writeFile(path.join(homeDir, '.claude', 'CLAUDE.md'), 'global', 'utf8');
+
+    const settingsContent = JSON.stringify({ mcpServers: { one: {} } });
+    const settingsPath = path.join(homeDir, '.claude', 'settings.json');
+    await writeFile(settingsPath, settingsContent, 'utf8');
+
+    // Pin mtimes to fixed integer seconds to avoid float precision loss
+    const claudeDir = path.join(homeDir, '.claude');
+    const claudeMdPath = path.join(claudeDir, 'CLAUDE.md');
+    fs.utimesSync(settingsPath, 1710000000, 1710000000);
+    fs.utimesSync(claudeMdPath, 1710000000, 1710000000);
+
+    const first = await countConfigs();
+    assert.equal(first.claudeMdCount, 1);
+    assert.equal(first.mcpCount, 1);
+
+    // Verify cache file was created
+    const cacheDir = await getConfigCacheDir(claudeDir);
+    assert.ok(fs.existsSync(cacheDir), 'config-cache directory should exist');
+
+    // Corrupt the settings file but preserve mtime+size
+    await writeFile(settingsPath, 'x'.repeat(settingsContent.length), 'utf8');
+    fs.utimesSync(settingsPath, 1710000000, 1710000000);
+
+    // Second call should still return cached result
+    const second = await countConfigs();
+    assert.equal(second.claudeMdCount, 1);
+    assert.equal(second.mcpCount, 1);
+  } finally {
+    process.env.HOME = originalHome;
+    await rm(homeDir, { recursive: true, force: true });
+  }
+});
+
+test('countConfigs cache: miss on file modification (mtime changes)', async () => {
+  const homeDir = await mkdtemp(path.join(tmpdir(), 'claude-hud-cc-'));
+  const originalHome = process.env.HOME;
+  process.env.HOME = homeDir;
+
+  try {
+    await mkdir(path.join(homeDir, '.claude'), { recursive: true });
+    await writeFile(
+      path.join(homeDir, '.claude', 'settings.json'),
+      JSON.stringify({ mcpServers: { one: {} } }),
+      'utf8'
+    );
+
+    const first = await countConfigs();
+    assert.equal(first.mcpCount, 1);
+
+    // Modify settings.json — use explicit mtime bump to avoid timing flakiness
+    const settingsPath = path.join(homeDir, '.claude', 'settings.json');
+    const statBefore = fs.statSync(settingsPath);
+    await writeFile(
+      settingsPath,
+      JSON.stringify({ mcpServers: { one: {}, two: {}, three: {} } }),
+      'utf8'
+    );
+    // Force mtime forward by 1 second
+    fs.utimesSync(settingsPath, statBefore.atimeMs / 1000 + 1, statBefore.mtimeMs / 1000 + 1);
+
+    const second = await countConfigs();
+    assert.equal(second.mcpCount, 3, 'Should detect updated settings.json');
+  } finally {
+    process.env.HOME = originalHome;
+    await rm(homeDir, { recursive: true, force: true });
+  }
+});
+
+test('countConfigs cache: miss on file creation (CLAUDE.md appears)', async () => {
+  const homeDir = await mkdtemp(path.join(tmpdir(), 'claude-hud-cc-'));
+  const originalHome = process.env.HOME;
+  process.env.HOME = homeDir;
+
+  try {
+    await mkdir(path.join(homeDir, '.claude'), { recursive: true });
+
+    const first = await countConfigs();
+    assert.equal(first.claudeMdCount, 0);
+
+    // Create CLAUDE.md — changes the directory mtime
+    await writeFile(path.join(homeDir, '.claude', 'CLAUDE.md'), 'global', 'utf8');
+
+    const second = await countConfigs();
+    assert.equal(second.claudeMdCount, 1, 'Should detect newly created CLAUDE.md');
+  } finally {
+    process.env.HOME = originalHome;
+    await rm(homeDir, { recursive: true, force: true });
+  }
+});
+
+test('countConfigs cache: miss on file deletion (CLAUDE.md removed)', async () => {
+  const homeDir = await mkdtemp(path.join(tmpdir(), 'claude-hud-cc-'));
+  const originalHome = process.env.HOME;
+  process.env.HOME = homeDir;
+
+  try {
+    await mkdir(path.join(homeDir, '.claude'), { recursive: true });
+    await writeFile(path.join(homeDir, '.claude', 'CLAUDE.md'), 'global', 'utf8');
+
+    const first = await countConfigs();
+    assert.equal(first.claudeMdCount, 1);
+
+    // Delete CLAUDE.md — changes the directory mtime
+    fs.unlinkSync(path.join(homeDir, '.claude', 'CLAUDE.md'));
+
+    const second = await countConfigs();
+    assert.equal(second.claudeMdCount, 0, 'Should detect deleted CLAUDE.md');
+  } finally {
+    process.env.HOME = originalHome;
+    await rm(homeDir, { recursive: true, force: true });
+  }
+});
+
+test('countConfigs cache: isolation between different cwds', async () => {
+  const homeDir = await mkdtemp(path.join(tmpdir(), 'claude-hud-cc-'));
+  const projectA = await mkdtemp(path.join(tmpdir(), 'claude-hud-projA-'));
+  const projectB = await mkdtemp(path.join(tmpdir(), 'claude-hud-projB-'));
+  const originalHome = process.env.HOME;
+  process.env.HOME = homeDir;
+
+  try {
+    await mkdir(path.join(homeDir, '.claude'), { recursive: true });
+    await writeFile(path.join(projectA, 'CLAUDE.md'), 'projA', 'utf8');
+    // projectB has no CLAUDE.md
+
+    const countsA = await countConfigs(projectA);
+    const countsB = await countConfigs(projectB);
+
+    assert.equal(countsA.claudeMdCount, 1, 'Project A should have 1 CLAUDE.md');
+    assert.equal(countsB.claudeMdCount, 0, 'Project B should have 0 CLAUDE.md');
+
+    // Verify both get independent caches
+    const cacheDir = await getConfigCacheDir(path.join(homeDir, '.claude'));
+    const cacheFiles = fs.readdirSync(cacheDir);
+    assert.ok(cacheFiles.length >= 2, 'Should have separate cache files for different cwds');
+  } finally {
+    process.env.HOME = originalHome;
+    await rm(homeDir, { recursive: true, force: true });
+    await rm(projectA, { recursive: true, force: true });
+    await rm(projectB, { recursive: true, force: true });
+  }
+});
+
+test('countConfigs cache: isolation between different CLAUDE_CONFIG_DIRs', async () => {
+  const homeDir = await mkdtemp(path.join(tmpdir(), 'claude-hud-cc-'));
+  const configA = path.join(homeDir, '.claude-a');
+  const configB = path.join(homeDir, '.claude-b');
+  const originalHome = process.env.HOME;
+  const originalConfigDir = process.env.CLAUDE_CONFIG_DIR;
+  process.env.HOME = homeDir;
+
+  try {
+    await mkdir(configA, { recursive: true });
+    await mkdir(configB, { recursive: true });
+    await writeFile(path.join(configA, 'CLAUDE.md'), 'config-a', 'utf8');
+    // configB has no CLAUDE.md
+
+    process.env.CLAUDE_CONFIG_DIR = configA;
+    const countsA = await countConfigs();
+
+    process.env.CLAUDE_CONFIG_DIR = configB;
+    const countsB = await countConfigs();
+
+    assert.equal(countsA.claudeMdCount, 1, 'Config A should have 1 CLAUDE.md');
+    assert.equal(countsB.claudeMdCount, 0, 'Config B should have 0 CLAUDE.md');
+  } finally {
+    restoreEnvVar('HOME', originalHome);
+    restoreEnvVar('CLAUDE_CONFIG_DIR', originalConfigDir);
+    await rm(homeDir, { recursive: true, force: true });
+  }
+});
+
+test('countConfigs cache: corrupted cache file handled gracefully', async () => {
+  const homeDir = await mkdtemp(path.join(tmpdir(), 'claude-hud-cc-'));
+  const originalHome = process.env.HOME;
+  process.env.HOME = homeDir;
+
+  try {
+    await mkdir(path.join(homeDir, '.claude'), { recursive: true });
+    await writeFile(path.join(homeDir, '.claude', 'CLAUDE.md'), 'global', 'utf8');
+
+    // First call populates cache
+    const first = await countConfigs();
+    assert.equal(first.claudeMdCount, 1);
+
+    // Corrupt all cache files
+    const cacheDir = await getConfigCacheDir(path.join(homeDir, '.claude'));
+    const cacheFiles = fs.readdirSync(cacheDir);
+    for (const file of cacheFiles) {
+      fs.writeFileSync(path.join(cacheDir, file), '{not-valid-json!!!', 'utf8');
+    }
+
+    // Should still return correct results via fresh recompute
+    const second = await countConfigs();
+    assert.equal(second.claudeMdCount, 1, 'Should recompute correctly after cache corruption');
+  } finally {
+    process.env.HOME = originalHome;
+    await rm(homeDir, { recursive: true, force: true });
+  }
+});
+
+test('countConfigs cache: first invocation without cache dir', async () => {
+  const homeDir = await mkdtemp(path.join(tmpdir(), 'claude-hud-cc-'));
+  const originalHome = process.env.HOME;
+  process.env.HOME = homeDir;
+
+  try {
+    await mkdir(path.join(homeDir, '.claude'), { recursive: true });
+    await writeFile(path.join(homeDir, '.claude', 'CLAUDE.md'), 'global', 'utf8');
+    await writeFile(
+      path.join(homeDir, '.claude', 'settings.json'),
+      JSON.stringify({ mcpServers: { s1: {} }, hooks: { onStart: {} } }),
+      'utf8'
+    );
+
+    // No config-cache/ dir exists yet
+    const cacheDir = await getConfigCacheDir(path.join(homeDir, '.claude'));
+    assert.ok(!fs.existsSync(cacheDir), 'config-cache should not exist initially');
+
+    const result = await countConfigs();
+    assert.equal(result.claudeMdCount, 1);
+    assert.equal(result.mcpCount, 1);
+    assert.equal(result.hooksCount, 1);
+
+    // Cache dir should now be created
+    assert.ok(fs.existsSync(cacheDir), 'config-cache should be created after first call');
+  } finally {
+    process.env.HOME = originalHome;
+    await rm(homeDir, { recursive: true, force: true });
+  }
+});
+
+test('countConfigs cache: works without cwd (user scope only)', async () => {
+  const homeDir = await mkdtemp(path.join(tmpdir(), 'claude-hud-cc-'));
+  const originalHome = process.env.HOME;
+  process.env.HOME = homeDir;
+
+  try {
+    await mkdir(path.join(homeDir, '.claude'), { recursive: true });
+    await writeFile(path.join(homeDir, '.claude', 'CLAUDE.md'), 'global', 'utf8');
+    await writeFile(
+      path.join(homeDir, '.claude', 'settings.json'),
+      JSON.stringify({ mcpServers: { a: {}, b: {} } }),
+      'utf8'
+    );
+
+    // First call without cwd
+    const first = await countConfigs();
+    assert.equal(first.claudeMdCount, 1);
+    assert.equal(first.mcpCount, 2);
+
+    // Verify cache was written
+    const cacheDir = await getConfigCacheDir(path.join(homeDir, '.claude'));
+    assert.ok(fs.existsSync(cacheDir), 'cache should exist after first call');
+
+    // Second call should use cache
+    const second = await countConfigs();
+    assert.equal(second.claudeMdCount, 1);
+    assert.equal(second.mcpCount, 2);
+  } finally {
+    process.env.HOME = originalHome;
+    await rm(homeDir, { recursive: true, force: true });
+  }
+});
