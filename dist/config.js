@@ -24,6 +24,8 @@ export const DEFAULT_CONFIG = {
         showDirty: true,
         showAheadBehind: false,
         showFileStats: false,
+        pushWarningThreshold: 0,
+        pushCriticalThreshold: 0,
     },
     display: {
         showModel: true,
@@ -43,6 +45,7 @@ export const DEFAULT_CONFIG = {
         showClaudeCodeVersion: false,
         showMemoryUsage: false,
         showSessionTokens: false,
+        showOutputStyle: false,
         autocompactBuffer: 'enabled',
         usageThreshold: 0,
         sevenDayThreshold: 80,
@@ -159,6 +162,12 @@ function validateThreshold(value, max = 100) {
         return 0;
     return Math.max(0, Math.min(max, value));
 }
+function validateCountThreshold(value) {
+    if (typeof value !== 'number' || !Number.isFinite(value)) {
+        return 0;
+    }
+    return Math.max(0, Math.floor(value));
+}
 export function mergeConfig(userConfig) {
     const migrated = migrateConfig(userConfig);
     const language = validateLanguage(migrated.language)
@@ -187,6 +196,8 @@ export function mergeConfig(userConfig) {
         showFileStats: typeof migrated.gitStatus?.showFileStats === 'boolean'
             ? migrated.gitStatus.showFileStats
             : DEFAULT_CONFIG.gitStatus.showFileStats,
+        pushWarningThreshold: validateCountThreshold(migrated.gitStatus?.pushWarningThreshold),
+        pushCriticalThreshold: validateCountThreshold(migrated.gitStatus?.pushCriticalThreshold),
     };
     const display = {
         showModel: typeof migrated.display?.showModel === 'boolean'
@@ -240,6 +251,9 @@ export function mergeConfig(userConfig) {
         showSessionTokens: typeof migrated.display?.showSessionTokens === 'boolean'
             ? migrated.display.showSessionTokens
             : DEFAULT_CONFIG.display.showSessionTokens,
+        showOutputStyle: typeof migrated.display?.showOutputStyle === 'boolean'
+            ? migrated.display.showOutputStyle
+            : DEFAULT_CONFIG.display.showOutputStyle,
         autocompactBuffer: validateAutocompactBuffer(migrated.display?.autocompactBuffer)
             ? migrated.display.autocompactBuffer
             : DEFAULT_CONFIG.display.autocompactBuffer,

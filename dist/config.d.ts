@@ -39,6 +39,8 @@ export interface HudConfig {
         showDirty: boolean;
         showAheadBehind: boolean;
         showFileStats: boolean;
+        pushWarningThreshold: number;
+        pushCriticalThreshold: number;
     };
     display: {
         showModel: boolean;
@@ -58,6 +60,7 @@ export interface HudConfig {
         showClaudeCodeVersion: boolean;
         showMemoryUsage: boolean;
         showSessionTokens: boolean;
+        showOutputStyle: boolean;
         autocompactBuffer: AutocompactBufferMode;
         usageThreshold: number;
         sevenDayThreshold: number;

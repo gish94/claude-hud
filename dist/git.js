@@ -24,6 +24,7 @@ export async function getGitStatus(cwd) {
         // Check for dirty state and parse file stats
         let isDirty = false;
         let fileStats;
+        let lineDiff;
         try {
             const { stdout: statusOut } = await execFileAsync('git', ['--no-optional-locks', 'status', '--porcelain'], { cwd, timeout: 1000, encoding: 'utf8' });
             const trimmed = statusOut.trim();
@@ -34,6 +35,20 @@ export async function getGitStatus(cwd) {
         }
         catch {
             // Ignore errors, assume clean
+        }
+        // Get per-file and total line diffs
+        if (isDirty) {
+            try {
+                const { stdout: numstatOut } = await execFileAsync('git', ['diff', '--numstat', 'HEAD'], { cwd, timeout: 2000, encoding: 'utf8' });
+                const { totalDiff, perFileDiff } = parseNumstat(numstatOut);
+                lineDiff = totalDiff;
+                if (fileStats) {
+                    applyLineDiffsToFiles(fileStats.trackedFiles, perFileDiff);
+                }
+            }
+            catch {
+                // Ignore errors
+            }
         }
         // Get ahead/behind counts
         let ahead = 0;
@@ -49,7 +64,22 @@ export async function getGitStatus(cwd) {
         catch {
             // No upstream or error, keep 0/0
         }
-        return { branch, isDirty, ahead, behind, fileStats };
+        // Build GitHub branch URL from remote
+        let branchUrl;
+        try {
+            const { stdout: remoteOut } = await execFileAsync('git', ['remote', 'get-url', 'origin'], { cwd, timeout: 1000, encoding: 'utf8' });
+            const remote = remoteOut.trim();
+            const httpsBase = remote
+                .replace(/^git@([^:]+):/, 'https://$1/')
+                .replace(/\.git$/, '');
+            if (httpsBase.startsWith('https://')) {
+                branchUrl = `${httpsBase}/tree/${branch}`;
+            }
+        }
+        catch {
+            // No remote or not GitHub
+        }
+        return { branch, isDirty, ahead, behind, fileStats, lineDiff, branchUrl };
     }
     catch {
         return null;
@@ -60,7 +90,7 @@ export async function getGitStatus(cwd) {
  * Status codes: M=modified, A=added, D=deleted, ??=untracked
  */
 function parseFileStats(porcelainOutput) {
-    const stats = { modified: 0, added: 0, deleted: 0, untracked: 0 };
+    const stats = { modified: 0, added: 0, deleted: 0, untracked: 0, trackedFiles: [] };
     const lines = porcelainOutput.split('\n').filter(Boolean);
     for (const line of lines) {
         if (line.length < 2)
@@ -72,15 +102,52 @@ function parseFileStats(porcelainOutput) {
         }
         else if (index === 'A') {
             stats.added++;
+            const fullPath = line.slice(2).trimStart();
+            stats.trackedFiles.push({ basename: fullPath.split('/').pop() ?? fullPath, fullPath, type: 'added' });
         }
         else if (index === 'D' || worktree === 'D') {
             stats.deleted++;
+            const fullPath = line.slice(2).trimStart();
+            stats.trackedFiles.push({ basename: fullPath.split('/').pop() ?? fullPath, fullPath, type: 'deleted' });
         }
         else if (index === 'M' || worktree === 'M' || index === 'R' || index === 'C') {
             // M=modified, R=renamed (counts as modified), C=copied (counts as modified)
             stats.modified++;
+            // For renames, git porcelain shows "old -> new"; take the destination path
+            const fullPath = line.slice(2).trimStart().split(' -> ').pop() ?? line.slice(2).trimStart();
+            stats.trackedFiles.push({ basename: fullPath.split('/').pop() ?? fullPath, fullPath, type: 'modified' });
         }
     }
     return stats;
+}
+/**
+ * Parse `git diff --numstat HEAD` output.
+ * Returns total line diff and a map of fullPath -> LineDiff.
+ */
+function parseNumstat(numstatOutput) {
+    const totalDiff = { added: 0, deleted: 0 };
+    const perFileDiff = new Map();
+    for (const line of numstatOutput.trim().split('\n').filter(Boolean)) {
+        const parts = line.split('\t');
+        if (parts.length < 3)
+            continue;
+        const added = parseInt(parts[0], 10);
+        const deleted = parseInt(parts[1], 10);
+        const filePath = parts[2];
+        if (Number.isNaN(added) || Number.isNaN(deleted))
+            continue; // binary file
+        totalDiff.added += added;
+        totalDiff.deleted += deleted;
+        perFileDiff.set(filePath, { added, deleted });
+    }
+    return { totalDiff, perFileDiff };
+}
+function applyLineDiffsToFiles(files, perFileDiff) {
+    for (const file of files) {
+        const diff = perFileDiff.get(file.fullPath);
+        if (diff) {
+            file.lineDiff = diff;
+        }
+    }
 }
 //# sourceMappingURL=git.js.map

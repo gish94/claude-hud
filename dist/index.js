@@ -42,7 +42,7 @@ export async function main(overrides = {}) {
         }
         const transcriptPath = stdin.transcript_path ?? "";
         const transcript = await deps.parseTranscript(transcriptPath);
-        const { claudeMdCount, rulesCount, mcpCount, hooksCount } = await deps.countConfigs(stdin.cwd);
+        const { claudeMdCount, rulesCount, mcpCount, hooksCount, outputStyle } = await deps.countConfigs(stdin.cwd);
         const config = await deps.loadConfig();
         setLanguage(config.language);
         const gitStatus = config.gitStatus.enabled
@@ -75,6 +75,7 @@ export async function main(overrides = {}) {
             memoryUsage,
             config,
             extraLabel,
+            outputStyle,
             claudeCodeVersion,
         };
         deps.render(ctx);
