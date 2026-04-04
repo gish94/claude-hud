@@ -189,6 +189,8 @@ Supported color names: `dim`, `red`, `green`, `yellow`, `magenta`, `cyan`, `brig
 
 Usage display is **enabled by default** when Claude Code provides subscriber `rate_limits` data on stdin. It shows your rate limit consumption on line 2 alongside the context bar.
 
+ClaudeHUD intentionally trusts only the official statusline stdin payload for live usage. It does not read local OAuth credentials or poll undocumented usage endpoints in the background.
+
 Free/weekly-only accounts render the weekly window by itself instead of showing a ghost `5h: --` placeholder.
 
 The 7-day percentage appears when above the `display.sevenDayThreshold` (default 80%):
@@ -200,7 +202,7 @@ Context █████░░░░░ 45% │ Usage ██░░░░░░░
 To disable, set `display.showUsage` to `false`.
 
 **Requirements:**
-- Claude subscription usage data from Claude Code stdin
+- Claude Code must include subscriber `rate_limits` data on stdin for the current session
 - Not available for API-key-only users
 
 **Troubleshooting:** If usage doesn't appear:
@@ -209,7 +211,8 @@ To disable, set `display.showUsage` to `false`.
 - API users see no usage display (they have pay-per-token, not rate limits)
 - AWS Bedrock models display `Bedrock` and hide usage limits (usage is managed in AWS)
 - Claude Code may leave `rate_limits` empty until after the first model response in a session
-- Older Claude Code versions that do not emit `rate_limits` will not show subscriber usage
+- Some Claude Code builds and subscription tiers may still omit `rate_limits`, even after the first response
+- When `rate_limits` is missing, ClaudeHUD will hide usage instead of falling back to credential scraping or undocumented API calls
 
 ### Example Configuration
 
