@@ -1,7 +1,7 @@
 import type { RenderContext } from '../../types.js';
 import { getModelName, formatModelName, getProviderLabel } from '../../stdin.js';
 import { getOutputSpeed } from '../../speed-tracker.js';
-import { git as gitColor, gitBranch as gitBranchColor, label, model as modelColor, project as projectColor, red, custom as customColor } from '../colors.js';
+import { git as gitColor, gitBranch as gitBranchColor, label, model as modelColor, project as projectColor, custom as customColor } from '../colors.js';
 
 export function renderProjectLine(ctx: RenderContext): string | null {
   const display = ctx.config?.display;
@@ -11,9 +11,7 @@ export function renderProjectLine(ctx: RenderContext): string | null {
   if (display?.showModel !== false) {
     const model = formatModelName(getModelName(ctx.stdin), ctx.config?.display?.modelFormat, ctx.config?.display?.modelOverride);
     const providerLabel = getProviderLabel(ctx.stdin);
-    const showUsage = display?.showUsage !== false;
-    const hasApiKey = !!process.env.ANTHROPIC_API_KEY;
-    const modelQualifier = providerLabel ?? (showUsage && hasApiKey ? red('API') : undefined);
+    const modelQualifier = providerLabel ?? undefined;
     const modelDisplay = modelQualifier ? `${model} | ${modelQualifier}` : model;
     parts.push(modelColor(`[${modelDisplay}]`, colors));
   }

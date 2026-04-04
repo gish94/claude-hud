@@ -2,7 +2,7 @@ import type { RenderContext } from '../types.js';
 import { isLimitReached } from '../types.js';
 import { getContextPercent, getBufferedPercent, getModelName, formatModelName, getProviderLabel, getTotalTokens } from '../stdin.js';
 import { getOutputSpeed } from '../speed-tracker.js';
-import { coloredBar, critical, git as gitColor, gitBranch as gitBranchColor, label, model as modelColor, project as projectColor, red, getContextColor, getQuotaColor, quotaBar, custom as customColor, RESET } from './colors.js';
+import { coloredBar, critical, git as gitColor, gitBranch as gitBranchColor, label, model as modelColor, project as projectColor, getContextColor, getQuotaColor, quotaBar, custom as customColor, RESET } from './colors.js';
 import { getAdaptiveBarWidth } from '../utils/terminal.js';
 
 const DEBUG = process.env.DEBUG?.includes('claude-hud') || process.env.DEBUG === '*';
@@ -35,9 +35,7 @@ export function renderSessionLine(ctx: RenderContext): string {
 
   // Model and context bar (FIRST)
   const providerLabel = getProviderLabel(ctx.stdin);
-  const showUsage = display?.showUsage !== false;
-  const hasApiKey = !!process.env.ANTHROPIC_API_KEY;
-  const modelQualifier = providerLabel ?? (showUsage && hasApiKey ? red('API') : undefined);
+  const modelQualifier = providerLabel ?? undefined;
   const modelDisplay = modelQualifier ? `${model} | ${modelQualifier}` : model;
 
   if (display?.showModel !== false && display?.showContextBar !== false) {

@@ -873,7 +873,7 @@ test('renderSessionLine does not add a synthetic subscriber label from usageData
   assert.ok(!line.includes('Max'), 'should not include plan name derived outside stdin');
 });
 
-test('renderSessionLine shows API label when API key auth is active', () => {
+test('renderSessionLine does not guess API auth from environment variables alone', () => {
   const ctx = baseContext();
   ctx.usageData = {
     planName: 'Max',
@@ -887,7 +887,7 @@ test('renderSessionLine shows API label when API key auth is active', () => {
 
   try {
     const line = renderSessionLine(ctx);
-    assert.ok(line.includes('API'), 'should include API label for API key auth');
+    assert.ok(!line.includes('API'), 'should not guess API auth from ANTHROPIC_API_KEY alone');
     assert.ok(!line.includes('Max'), 'should not include subscriber plan label');
   } finally {
     if (savedApiKey === undefined) {
@@ -898,7 +898,7 @@ test('renderSessionLine shows API label when API key auth is active', () => {
   }
 });
 
-test('renderProjectLine shows API label when API key auth is active', () => {
+test('renderProjectLine does not guess API auth from environment variables alone', () => {
   const ctx = baseContext();
   ctx.usageData = {
     planName: 'Pro',
@@ -912,7 +912,7 @@ test('renderProjectLine shows API label when API key auth is active', () => {
 
   try {
     const line = renderProjectLine(ctx);
-    assert.ok(line?.includes('API'), 'should include API label for API key auth');
+    assert.ok(!line?.includes('API'), 'should not guess API auth from ANTHROPIC_API_KEY alone');
     assert.ok(!line?.includes('Pro'), 'should not include subscriber plan label');
   } finally {
     if (savedApiKey === undefined) {

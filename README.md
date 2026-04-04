@@ -80,7 +80,7 @@ Claude HUD gives you better insights into what's happening in your Claude Code s
 [Opus] │ my-project git:(main*)
 Context █████░░░░░ 45% │ Usage ██░░░░░░░░ 25% (1h 30m / 5h)
 ```
-- **Line 1** — Model, provider/auth label when relevant (for example `Bedrock` or `API`), project path, git branch
+- **Line 1** — Model, provider label when positively identified (for example `Bedrock`), project path, git branch
 - **Line 2** — Context bar (green → yellow → red) and usage rate limits
 
 ### Optional lines (enable via `/claude-hud:configure`)
