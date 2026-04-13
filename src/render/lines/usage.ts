@@ -38,7 +38,7 @@ export function renderUsageLine(ctx: RenderContext): string | null {
     return null;
   }
 
-  const usageLabel = label(t("label.usage"), colors);
+  const usageLabel = label(t("label.usage").padEnd(7), colors);
 
   if (isLimitReached(ctx.usageData)) {
     const resetTime =
@@ -103,7 +103,7 @@ export function renderUsageLine(ctx: RenderContext): string | null {
       forceLabel: true,
       fairPercent: sevenDayFair,
     });
-    return `${usageLabel} ${fiveHourPart} | ${sevenDayPart}`;
+    return `${usageLabel} ${fiveHourPart}\n${sevenDayPart}`;
   }
 
   return `${usageLabel} ${fiveHourPart}`;
@@ -141,7 +141,7 @@ function formatUsageWindowPart({
 }): string {
   const usageDisplay = formatUsagePercent(percent, colors);
   const reset = formatResetTime(resetAt);
-  const styledLabel = label(windowLabel, colors);
+  const styledLabel = label(forceLabel ? windowLabel.padEnd(7) : windowLabel, colors);
 
   // When fair budget is shown, merge it with reset time into one compact parenthetical
   // e.g. "7% (fair 26% · 4h 2m)" instead of "7% (fair: 26%) (resets in 4h 2m)"

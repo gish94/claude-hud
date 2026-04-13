@@ -33,7 +33,7 @@ export function renderUsageLine(ctx) {
     if (getProviderLabel(ctx.stdin)) {
         return null;
     }
-    const usageLabel = label(t("label.usage"), colors);
+    const usageLabel = label(t("label.usage").padEnd(7), colors);
     if (isLimitReached(ctx.usageData)) {
         const resetTime = ctx.usageData.fiveHour === 100
             ? formatResetTime(ctx.usageData.fiveHourResetAt)
@@ -89,7 +89,7 @@ export function renderUsageLine(ctx) {
             forceLabel: true,
             fairPercent: sevenDayFair,
         });
-        return `${usageLabel} ${fiveHourPart} | ${sevenDayPart}`;
+        return `${usageLabel} ${fiveHourPart}\n${sevenDayPart}`;
     }
     return `${usageLabel} ${fiveHourPart}`;
 }
@@ -103,7 +103,7 @@ function formatUsagePercent(percent, colors) {
 function formatUsageWindowPart({ label: windowLabel, percent, resetAt, colors, usageBarEnabled, barWidth, forceLabel = false, fairPercent = null, }) {
     const usageDisplay = formatUsagePercent(percent, colors);
     const reset = formatResetTime(resetAt);
-    const styledLabel = label(windowLabel, colors);
+    const styledLabel = label(forceLabel ? windowLabel.padEnd(7) : windowLabel, colors);
     // When fair budget is shown, merge it with reset time into one compact parenthetical
     // e.g. "7% (fair 26% · 4h 2m)" instead of "7% (fair: 26%) (resets in 4h 2m)"
     const hasFair = fairPercent !== null;

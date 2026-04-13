@@ -385,34 +385,8 @@ function renderExpanded(ctx: RenderContext, terminalWidth: number | null = null)
     }
 
     const nextElement = elementOrder[index + 1];
-    if (
-      (element === 'context' && nextElement === 'usage' && !seen.has('usage'))
-      || (element === 'usage' && nextElement === 'context' && !seen.has('context'))
-    ) {
-      seen.add(element);
-      seen.add(nextElement);
-
-      const firstLine = renderElementLine(ctx, element);
-      const secondLine = renderElementLine(ctx, nextElement);
-
-      if (firstLine && secondLine) {
-        const combinedLine = `${firstLine} │ ${secondLine}`;
-        const canCombine = !terminalWidth || visualLength(combinedLine) <= terminalWidth;
-
-        if (canCombine) {
-          lines.push({ line: combinedLine, isActivity: false });
-        } else {
-          lines.push({ line: firstLine, isActivity: false });
-          lines.push({ line: secondLine, isActivity: false });
-        }
-      } else if (firstLine) {
-        lines.push({ line: firstLine, isActivity: false });
-      } else if (secondLine) {
-        lines.push({ line: secondLine, isActivity: false });
-      }
-
-      continue;
-    }
+    // Never combine context + usage — render them on separate lines
+    // for readability (especially with fair budget enabled).
 
     seen.add(element);
 
