@@ -143,20 +143,34 @@ function formatUsageWindowPart({
   const reset = formatResetTime(resetAt);
   const styledLabel = label(windowLabel, colors);
 
-  const fairSuffix = fairPercent !== null
-    ? ` ${dim(`(fair: ${fairPercent}%)`)}`
-    : '';
+  // When fair budget is shown, merge it with reset time into one compact parenthetical
+  // e.g. "7% (fair 26% · 4h 2m)" instead of "7% (fair: 26%) (resets in 4h 2m)"
+  const hasFair = fairPercent !== null;
 
   if (usageBarEnabled) {
-    const body = reset
-      ? `${quotaBar(percent ?? 0, barWidth, colors)} ${usageDisplay}${fairSuffix} (${t("format.resetsIn")} ${reset})`
-      : `${quotaBar(percent ?? 0, barWidth, colors)} ${usageDisplay}${fairSuffix}`;
+    let suffix = '';
+    if (hasFair && reset) {
+      suffix = ` ${dim(`(fair ${fairPercent}% · ${reset})`)}`;
+    } else if (hasFair) {
+      suffix = ` ${dim(`(fair ${fairPercent}%)`)}`;
+    } else if (reset) {
+      suffix = ` (${t("format.resetsIn")} ${reset})`;
+    }
+    const body = `${quotaBar(percent ?? 0, barWidth, colors)} ${usageDisplay}${suffix}`;
     return forceLabel ? `${styledLabel} ${body}` : body;
   }
 
-  return reset
-    ? `${styledLabel} ${usageDisplay}${fairSuffix} (${t("format.resetsIn")} ${reset})`
-    : `${styledLabel} ${usageDisplay}${fairSuffix}`;
+  let suffix = '';
+  if (hasFair && reset) {
+    suffix = ` ${dim(`(fair ${fairPercent}% · ${reset})`)}`;
+  } else if (hasFair) {
+    suffix = ` ${dim(`(fair ${fairPercent}%)`)}`;
+  } else if (reset) {
+    suffix = ` (${t("format.resetsIn")} ${reset})`;
+  }
+  return forceLabel
+    ? `${styledLabel} ${usageDisplay}${suffix}`
+    : `${usageDisplay}${suffix}`;
 }
 
 function formatResetTime(resetAt: Date | null): string {
