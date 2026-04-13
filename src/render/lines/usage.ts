@@ -1,9 +1,26 @@
 import type { RenderContext } from "../../types.js";
 import { isLimitReached } from "../../types.js";
 import { getProviderLabel } from "../../stdin.js";
-import { critical, label, getQuotaColor, quotaBar, RESET } from "../colors.js";
+import { critical, label, dim, getQuotaColor, quotaBar, RESET } from "../colors.js";
 import { getAdaptiveBarWidth } from "../../utils/terminal.js";
 import { t } from "../../i18n/index.js";
+
+const FIVE_HOURS_MS = 5 * 60 * 60 * 1000;
+const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
+
+/**
+ * Calculate the "fair" percentage of a rate-limit window based on elapsed time.
+ * If 1 hour has passed in a 5-hour window, your fair share is 20%.
+ */
+function calcFairPercent(resetAt: Date | null, windowMs: number): number | null {
+  if (!resetAt) return null;
+  const now = Date.now();
+  const remainingMs = resetAt.getTime() - now;
+  if (remainingMs <= 0) return 100;
+  const elapsedMs = windowMs - remainingMs;
+  if (elapsedMs <= 0) return 0;
+  return Math.min(100, Math.round((elapsedMs / windowMs) * 100));
+}
 
 export function renderUsageLine(ctx: RenderContext): string | null {
   const display = ctx.config?.display;
@@ -57,6 +74,11 @@ export function renderUsageLine(ctx: RenderContext): string | null {
     return `${usageLabel} ${weeklyOnlyPart}`;
   }
 
+  const showFairBudget = display?.showFairBudget ?? false;
+  const fiveHourFair = showFairBudget
+    ? calcFairPercent(ctx.usageData.fiveHourResetAt, FIVE_HOURS_MS)
+    : null;
+
   const fiveHourPart = formatUsageWindowPart({
     label: "5h",
     percent: fiveHour,
@@ -64,9 +86,13 @@ export function renderUsageLine(ctx: RenderContext): string | null {
     colors,
     usageBarEnabled,
     barWidth,
+    fairPercent: fiveHourFair,
   });
 
   if (sevenDay !== null && sevenDay >= sevenDayThreshold) {
+    const sevenDayFair = showFairBudget
+      ? calcFairPercent(ctx.usageData.sevenDayResetAt, SEVEN_DAYS_MS)
+      : null;
     const sevenDayPart = formatUsageWindowPart({
       label: t("label.weekly"),
       percent: sevenDay,
@@ -75,6 +101,7 @@ export function renderUsageLine(ctx: RenderContext): string | null {
       usageBarEnabled,
       barWidth,
       forceLabel: true,
+      fairPercent: sevenDayFair,
     });
     return `${usageLabel} ${fiveHourPart} | ${sevenDayPart}`;
   }
@@ -101,6 +128,7 @@ function formatUsageWindowPart({
   usageBarEnabled,
   barWidth,
   forceLabel = false,
+  fairPercent = null,
 }: {
   label: string;
   percent: number | null;
@@ -109,21 +137,26 @@ function formatUsageWindowPart({
   usageBarEnabled: boolean;
   barWidth: number;
   forceLabel?: boolean;
+  fairPercent?: number | null;
 }): string {
   const usageDisplay = formatUsagePercent(percent, colors);
   const reset = formatResetTime(resetAt);
   const styledLabel = label(windowLabel, colors);
 
+  const fairSuffix = fairPercent !== null
+    ? ` ${dim(`(fair: ${fairPercent}%)`)}`
+    : '';
+
   if (usageBarEnabled) {
     const body = reset
-      ? `${quotaBar(percent ?? 0, barWidth, colors)} ${usageDisplay} (${t("format.resetsIn")} ${reset})`
-      : `${quotaBar(percent ?? 0, barWidth, colors)} ${usageDisplay}`;
+      ? `${quotaBar(percent ?? 0, barWidth, colors)} ${usageDisplay}${fairSuffix} (${t("format.resetsIn")} ${reset})`
+      : `${quotaBar(percent ?? 0, barWidth, colors)} ${usageDisplay}${fairSuffix}`;
     return forceLabel ? `${styledLabel} ${body}` : body;
   }
 
   return reset
-    ? `${styledLabel} ${usageDisplay} (${t("format.resetsIn")} ${reset})`
-    : `${styledLabel} ${usageDisplay}`;
+    ? `${styledLabel} ${usageDisplay}${fairSuffix} (${t("format.resetsIn")} ${reset})`
+    : `${styledLabel} ${usageDisplay}${fairSuffix}`;
 }
 
 function formatResetTime(resetAt: Date | null): string {
